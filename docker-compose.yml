@@ -1,0 +1,25 @@
+services:
+  pivot:
+    build:
+      context: .
+      args:
+        WHISPER_MODEL: ${WHISPER_MODEL:-medium}
+    image: pivot-podcast-cleaner:latest
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - pivot_data:/data
+      - ${AUDIO_MOUNT:-./audio}:/data/audio
+    env_file: .env
+    environment:
+      - DATA_DIR=/data
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+volumes:
+  pivot_data:
