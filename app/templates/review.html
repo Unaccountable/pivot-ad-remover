@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+  <div>
+    <a href="/" style="color:#888;font-size:.9rem;">← Episodes</a>
+    <h2 style="margin-top:.3rem;">{{ ep.title }}</h2>
+    <span class="badge badge-{{ ep.status }}" style="margin-top:.4rem;">{{ ep.status.replace('_',' ') }}</span>
+  </div>
+  <div style="display:flex;gap:.8rem;">
+    <button class="btn-success" onclick="saveAndPublish()">✅ Save & Publish</button>
+    <button style="background:#333;color:#e8e8e8;" onclick="saveSegments()">💾 Save Only</button>
+  </div>
+</div>
+<div style="background:#1a1a1a;border-radius:8px;padding:1.2rem;margin-bottom:1.5rem;">
+  <h3 style="margin-bottom:1rem;font-size:1rem;color:#aaa;">Detected Ad Segments</h3>
+  <p style="font-size:.85rem;color:#666;margin-bottom:1rem;">Red/CUT = will be removed. Gray/KEEP = stays in.</p>
+  <div id="segments-list"></div>
+  <button onclick="addSegment()" style="background:#2a2a2a;color:#aaa;margin-top:.8rem;font-size:.85rem;">+ Add Segment</button>
+</div>
+{% if ep.status=='error' and ep.error_msg %}
+<div style="background:#3a0a0a;border-radius:6px;padding:1rem;margin-bottom:1rem;color:#ff6b6b;"><strong>Error:</strong> {{ ep.error_msg }}</div>
+{% endif %}
+<script>
+const EPISODE_ID={{ ep.id }};
+let segments={{ ep.ad_segments|tojson if ep.ad_segments else '[]' }};
+function fmt(s){const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=(s%60).toFixed(1);return h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(4,'0');}
+function parseFmt(str){const p=str.split(':').map(Number);return p.length===3?p[0]*3600+p[1]*60+p[2]:p.length===2?p[0]*60+p[1]:p[0];}
+function render(){
+  const list=document.getElementById('segments-list');
+  if(!segments.length){list.innerHTML='<p style="color:#666;font-size:.9rem;">No segments detected.</p>';return;}
+  list.innerHTML=segments.map((seg,i)=>`
+    <div style="display:flex;align-items:center;gap:.8rem;padding:.6rem 0;border-bottom:1px solid #2a2a2a;">
+      <input type="checkbox" ${seg.approved?'checked':''} onchange="toggle(${i},this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:#e74c3c;"/>
+      <span style="font-size:.75rem;color:${seg.approved?'#e74c3c':'#666'};width:28px;">${seg.approved?'CUT':'KEEP'}</span>
+      <label style="font-size:.85rem;color:#888;width:40px;">Start</label>
+      <input type="text" value="${fmt(seg.start)}" onchange="updateSeg(${i},'start',parseFmt(this.value))" style="background:#0f0f0f;border:1px solid #333;color:#e8e8e8;border-radius:4px;padding:4px 8px;width:100px;font-size:.85rem;"/>
+      <label style="font-size:.85rem;color:#888;width:30px;">End</label>
+      <input type="text" value="${fmt(seg.end)}" onchange="updateSeg(${i},'end',parseFmt(this.value))" style="background:#0f0f0f;border:1px solid #333;color:#e8e8e8;border-radius:4px;padding:4px 8px;width:100px;font-size:.85rem;"/>
+      <span style="font-size:.75rem;color:#555;flex:1;">${(seg.reasons||[]).map(r=>r.slice(0,40)).join(', ')}</span>
+      <button onclick="removeSegment(${i})" style="background:#3a0a0a;color:#ff6b6b;font-size:.75rem;padding:3px 8px;">x</button>
+    </div>`).join('');
+}
+function toggle(i,c){segments[i].approved=c;render();}
+function updateSeg(i,k,v){segments[i][k]=v;}
+function removeSegment(i){segments.splice(i,1);render();}
+function addSegment(){segments.push({start:0,end:30,approved:true,reasons:['manual']});render();}
+async function saveSegments(){
+  const r=await fetch(`/review/${EPISODE_ID}/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segments})});
+  if(r.ok)alert('Saved!');
+}
+async function saveAndPublish(){
+  await fetch(`/review/${EPISODE_ID}/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segments})});
+  const p=await fetch(`/review/${EPISODE_ID}/publish`,{method:'POST'});
+  if(p.ok){alert('Processing! Returning to list...');location.href='/';}
+  else{const e=await p.json();alert('Failed: '+(e.detail||JSON.stringify(e)));}
+}
+render();
+</script>
+{% endblock %}
