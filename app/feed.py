@@ -15,30 +15,36 @@ def generate_feed():
     items = []
     for row in rows:
         ep = dict(row)
-        url = f"{BASE_URL}/audio/{Path(ep['clean_audio_path']).name}"
+        audio_url = f"{BASE_URL}/audio/{Path(ep['clean_audio_path']).name}"
         try: size = Path(ep["clean_audio_path"]).stat().st_size
         except: size = 0
+        duration = _dur(ep.get("duration_secs"))
         pub = ep.get("pub_date") or datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S +0000")
-        items.append(f"""
-    <item>
-      <title>{escape(ep['title'])}</title>
-      <description><![CDATA[{ep.get('description','')}]]></description>
-      <pubDate>{pub}</pubDate>
-      <enclosure url="{url}" length="{size}" type="audio/mpeg"/>
-      <guid isPermaLink="false">{escape(ep['guid'])}-clean</guid>
-      <itunes:duration>{_dur(ep.get('duration_secs'))}</itunes:duration>
-      <itunes:author>{escape(FEED_AUTHOR)}</itunes:author>
-    </item>""")
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
-  <channel>
-    <title>{escape(FEED_TITLE)}</title>
-    <description>{escape(FEED_DESCRIPTION)}</description>
-    <link>{BASE_URL}</link>
-    <language>en-us</language>
-    <itunes:author>{escape(FEED_AUTHOR)}</itunes:author>
-    <itunes:explicit>no</itunes:explicit>
-    <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="{BASE_URL}/feed.xml" rel="self" type="application/rss+xml"/>
-    {'\n'.join(items)}
-  </channel>
-</rss>"""
+        item = (
+            "\n    <item>"
+            f"\n      <title>{escape(ep['title'])}</title>"
+            f"\n      <description><![CDATA[{ep.get('description', '')}]]></description>"
+            f"\n      <pubDate>{pub}</pubDate>"
+            f"\n      <enclosure url=\"{audio_url}\" length=\"{size}\" type=\"audio/mpeg\"/>"
+            f"\n      <guid isPermaLink=\"false\">{escape(ep['guid'])}-clean</guid>"
+            f"\n      <itunes:duration>{duration}</itunes:duration>"
+            f"\n      <itunes:author>{escape(FEED_AUTHOR)}</itunes:author>"
+            "\n    </item>"
+        )
+        items.append(item)
+    items_str = "".join(items)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">\n'
+        '  <channel>\n'
+        f'  <title>{escape(FEED_TITLE)}</title>\n'
+        f'  <description>{escape(FEED_DESCRIPTION)}</description>\n'
+        f'  <link>{BASE_URL}</link>\n'
+        '  <language>en-us</language>\n'
+        f'  <itunes:author>{escape(FEED_AUTHOR)}</itunes:author>\n'
+        '  <itunes:explicit>no</itunes:explicit>\n'
+        f'  <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="{BASE_URL}/feed.xml" rel="self" type="application/rss+xml"/>\n'
+        + items_str +
+        '\n  </channel>\n'
+        '</rss>'
+    )
