@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+  <h2>Episodes</h2>
+  <button class="btn-primary" onclick="forcePoll()">🔄 Poll RSS Now</button>
+</div>
+{% if not episodes %}<p style="color:#888;">No episodes yet. Click Poll RSS Now.</p>{% endif %}
+<table style="width:100%;border-collapse:collapse;">
+  <thead><tr style="border-bottom:1px solid #2a2a2a;text-align:left;color:#888;font-size:.85rem;">
+    <th style="padding:.6rem .8rem;">Title</th><th style="padding:.6rem .8rem;">Published</th>
+    <th style="padding:.6rem .8rem;">Status</th><th style="padding:.6rem .8rem;">Actions</th>
+  </tr></thead>
+  <tbody>{% for ep in episodes %}
+  <tr style="border-bottom:1px solid #1f1f1f;">
+    <td style="padding:.8rem;">{{ ep.title }}</td>
+    <td style="padding:.8rem;color:#888;font-size:.85rem;">{{ ep.pub_date[:16] if ep.pub_date else '-' }}</td>
+    <td style="padding:.8rem;">
+      <span class="badge badge-{{ ep.status }}">{{ ep.status.replace('_',' ') }}</span>
+      {% if ep.error_msg %}<div style="color:#ff6b6b;font-size:.75rem;margin-top:4px;">{{ ep.error_msg[:80] }}</div>{% endif %}
+    </td>
+    <td style="padding:.8rem;">
+      {% if ep.status == 'pending_review' %}<a href="/review/{{ ep.id }}"><button class="btn-primary" style="font-size:.8rem;">Review</button></a>
+      {% elif ep.status == 'published' %}<a href="/review/{{ ep.id }}"><button style="background:#333;color:#e8e8e8;font-size:.8rem;">View</button></a>
+      {% elif ep.status == 'error' %}<a href="/review/{{ ep.id }}"><button class="btn-danger" style="font-size:.8rem;">Retry</button></a>{% endif %}
+    </td>
+  </tr>{% endfor %}</tbody>
+</table>
+<script>
+async function forcePoll(){const r=await fetch('/admin/poll',{method:'POST'});if(r.ok)alert('Poll triggered!');}
+const live={{ episodes|selectattr('status','in',['downloading','transcribing','processing'])|list|length }};
+if(live>0)setTimeout(()=>location.reload(),30000);
+</script>
+{% endblock %}
