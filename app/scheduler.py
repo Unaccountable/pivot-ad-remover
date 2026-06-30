@@ -1,7 +1,8 @@
 """Poll the Pivot RSS feed. Hourly normally; every 3min Tue+Fri 05-06."""
 import datetime, logging, time, httpx, feedparser
+from email.utils import parsedate_to_datetime
 from pathlib import Path
-from app.config import PIVOT_RSS, AUDIO_DIR
+from app.config import PIVOT_RSS, AUDIO_DIR, MAX_EPISODE_AGE_DAYS
 from app.database import get_db, set_status
 
 log = logging.getLogger(__name__)
@@ -14,6 +15,17 @@ def get_sleep_seconds():
     if now.weekday() in RELEASE_WEEKDAYS and RELEASE_WINDOW_START <= now.hour < RELEASE_WINDOW_END:
         return FAST_POLL_SECONDS
     return NORMAL_POLL_SECONDS
+
+def is_too_old(pub_date_str: str) -> bool:
+    """Return True if the episode is older than MAX_EPISODE_AGE_DAYS."""
+    if not MAX_EPISODE_AGE_DAYS or not pub_date_str:
+        return False
+    try:
+        pub = parsedate_to_datetime(pub_date_str)
+        cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=MAX_EPISODE_AGE_DAYS)
+        return pub < cutoff
+    except Exception:
+        return False
 
 def fetch_feed():
     resp = httpx.get(PIVOT_RSS, timeout=30, follow_redirects=True)
@@ -35,11 +47,19 @@ def poll_once():
     with get_db() as db:
         for entry in feed.entries:
             guid = entry.get("id") or entry.get("link")
+            pub_date = entry.get("published", "")
+
+            if is_too_old(pub_date):
+                log.debug("Skipping old episode: %s (%s)", entry.get("title","?"), pub_date)
+                continue
+
             if db.execute("SELECT id FROM episodes WHERE guid=?", (guid,)).fetchone():
                 continue
+
             audio_url = next((e.href for e in entry.get("enclosures", []) if "audio" in e.get("type","")), None)
             if not audio_url:
                 continue
+
             title = entry.get("title", "Unknown")
             duration_secs = None
             if entry.get("itunes_duration"):
@@ -49,11 +69,12 @@ def poll_once():
                     elif len(parts)==2: duration_secs = int(parts[0])*60+float(parts[1])
                     else: duration_secs = float(parts[0])
                 except ValueError: pass
+
             safe = guid.replace("/","_").replace(":","_")[-60:]
             raw_path = AUDIO_DIR / "raw" / f"{safe}.mp3"
             db.execute(
                 "INSERT INTO episodes (guid,title,description,pub_date,original_url,duration_secs,raw_audio_path,status) VALUES (?,?,?,?,?,?,?,?)",
-                (guid, title, entry.get("summary",""), entry.get("published",""), audio_url, duration_secs, str(raw_path), "downloading"),
+                (guid, title, entry.get("summary",""), pub_date, audio_url, duration_secs, str(raw_path), "downloading"),
             )
             eid = db.execute("SELECT id FROM episodes WHERE guid=?", (guid,)).fetchone()[0]
             log.info("New episode: %s (id=%s)", title, eid)
@@ -65,7 +86,8 @@ def poll_once():
                 log.error("Download failed %s: %s", title, e)
 
 def run_scheduler():
-    log.info("Scheduler started. Fast=%ds Normal=%ds", FAST_POLL_SECONDS, NORMAL_POLL_SECONDS)
+    log.info("Scheduler started. Fast=%ds Normal=%ds MAX_EPISODE_AGE_DAYS=%s",
+             FAST_POLL_SECONDS, NORMAL_POLL_SECONDS, MAX_EPISODE_AGE_DAYS)
     while True:
         try: poll_once()
         except Exception as e: log.error("Scheduler error: %s", e)
