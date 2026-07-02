@@ -23,9 +23,14 @@ def is_too_old(pub_date_str: str) -> bool:
         return False
     try:
         pub = parsedate_to_datetime(pub_date_str)
+        # A "-0000" timezone (which the Pivot feed uses) yields a naive
+        # datetime; treat it as UTC so the comparison below doesn't raise.
+        if pub.tzinfo is None:
+            pub = pub.replace(tzinfo=datetime.timezone.utc)
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=MAX_EPISODE_AGE_DAYS)
         return pub < cutoff
     except Exception:
+        log.warning("Could not parse pub_date %r; treating as not-too-old", pub_date_str)
         return False
 
 def stable_guid(entry):
