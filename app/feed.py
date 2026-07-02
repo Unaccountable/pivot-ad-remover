@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
-from app.config import BASE_URL, FEED_TITLE, FEED_DESCRIPTION, FEED_AUTHOR
+from app.config import BASE_URL, FEED_TITLE, FEED_DESCRIPTION, FEED_AUTHOR, FEED_IMAGE, FEED_CATEGORY, FEED_OWNER_EMAIL
 from app.database import get_db
 
 def _dur(secs):
@@ -43,6 +43,12 @@ def generate_feed():
         '  <language>en-us</language>\n'
         f'  <itunes:author>{escape(FEED_AUTHOR)}</itunes:author>\n'
         '  <itunes:explicit>no</itunes:explicit>\n'
+        '  <itunes:type>episodic</itunes:type>\n'
+        f'  <itunes:image href="{escape(FEED_IMAGE)}"/>\n'
+        f'  <image><url>{escape(FEED_IMAGE)}</url><title>{escape(FEED_TITLE)}</title><link>{BASE_URL}</link></image>\n'
+        f'  <itunes:category text="{escape(FEED_CATEGORY)}"/>\n'
+        f'  <itunes:owner><itunes:name>{escape(FEED_AUTHOR)}</itunes:name><itunes:email>{escape(FEED_OWNER_EMAIL)}</itunes:email></itunes:owner>\n'
+        f'  <itunes:summary>{escape(FEED_DESCRIPTION)}</itunes:summary>\n'
         f'  <atom:link xmlns:atom="http://www.w3.org/2005/Atom" href="{BASE_URL}/feed.xml" rel="self" type="application/rss+xml"/>\n'
         + items_str +
         '\n  </channel>\n'
