@@ -1,6 +1,6 @@
 import json, logging, time
 from pathlib import Path
-from app.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE, DATA_DIR
+from app.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE, WHISPER_CPU_THREADS, DATA_DIR
 from app.database import get_db, set_status
 
 log = logging.getLogger(__name__)
@@ -9,7 +9,8 @@ _model = None
 
 def get_model():
     from faster_whisper import WhisperModel
-    return WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE)
+    return WhisperModel(WHISPER_MODEL, device=WHISPER_DEVICE, compute_type=WHISPER_COMPUTE,
+                        cpu_threads=WHISPER_CPU_THREADS, num_workers=1)
 
 def transcribe_episode(episode):
     global _model
