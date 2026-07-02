@@ -41,6 +41,26 @@ def serve_audio(filename: str):
     if not path.exists(): raise HTTPException(404)
     return FileResponse(path, media_type="audio/mpeg")
 
+@app.get("/audio/raw/{episode_id}")
+def serve_raw_audio(episode_id: int):
+    """Serve the uncut original audio so the review page can preview cuts."""
+    with get_db() as db:
+        ep = get_episode(db, episode_id)
+    if not ep or not ep.get("raw_audio_path"): raise HTTPException(404)
+    path = Path(ep["raw_audio_path"])
+    if not path.exists(): raise HTTPException(404)
+    return FileResponse(path, media_type="audio/mpeg")
+
+@app.get("/review/{episode_id}/transcript")
+def episode_transcript(episode_id: int):
+    """Return word-level timestamps so the review UI can show what each cut removes."""
+    with get_db() as db:
+        ep = get_episode(db, episode_id)
+    if not ep or not ep.get("transcript_path"): raise HTTPException(404)
+    p = Path(ep["transcript_path"])
+    if not p.exists(): raise HTTPException(404)
+    return {"words": json.loads(p.read_text()).get("words", [])}
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
     with get_db() as db:
