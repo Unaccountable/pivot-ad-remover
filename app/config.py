@@ -30,5 +30,5 @@ FEED_AUTHOR = "Kara Swisher & Scott Galloway"
 # Podcast artwork + metadata (required by Pocket Casts/Apple to load the show)
 FEED_IMAGE = os.getenv("FEED_IMAGE", "https://megaphone.imgix.net/podcasts/d6280242-e5c9-11e8-a7e3-d766bb7d2d3e/image/bbb7849ef30865b87218347b3a090613.png?ixlib=rails-4.3.1&max-w=3000&max-h=3000&fit=crop&auto=format,compress")
 FEED_CATEGORY = os.getenv("FEED_CATEGORY", "News")
-FEED_OWNER_EMAIL = os.getenv("FEED_OWNER_EMAIL", "podcasting@voxmedia.com")
+FEED_OWNER_EMAIL = os.getenv("FEED_OWNER_EMAIL", "podcast@chmbrs.dev")
 SECRET_KEY = os.getenv("SECRET_KEY", "changeme-in-production")
