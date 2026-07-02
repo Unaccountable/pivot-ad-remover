@@ -2,6 +2,7 @@
 import datetime, logging, time, httpx, feedparser
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 from app.config import PIVOT_RSS, AUDIO_DIR, MAX_EPISODE_AGE_DAYS
 from app.database import get_db, set_status
 
@@ -26,6 +27,20 @@ def is_too_old(pub_date_str: str) -> bool:
         return pub < cutoff
     except Exception:
         return False
+
+def stable_guid(entry):
+    """Return a dedup key that survives Megaphone rewriting URLs.
+
+    The feed's guid/link is often a tracking URL whose ?updated=<timestamp>
+    query param changes over time. Using it raw makes every episode look new
+    on each poll, causing endless re-downloads. Strip the query/fragment so
+    the same episode always maps to the same key.
+    """
+    raw = entry.get("id") or entry.get("link") or ""
+    if raw.startswith("http"):
+        parts = urlsplit(raw)
+        raw = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    return raw
 
 def fetch_feed():
     resp = httpx.get(PIVOT_RSS, timeout=30, follow_redirects=True)
@@ -64,7 +79,9 @@ def poll_once():
     feed = fetch_feed()
     with get_db() as db:
         for entry in feed.entries:
-            guid = entry.get("id") or entry.get("link")
+            guid = stable_guid(entry)
+            if not guid:
+                continue
             pub_date = entry.get("published", "")
 
             if is_too_old(pub_date):

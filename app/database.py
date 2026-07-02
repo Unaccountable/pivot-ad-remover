@@ -17,8 +17,12 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    # timeout + WAL let the scheduler, transcriber, and web threads write
+    # concurrently instead of raising "database is locked".
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=30000")
     try:
         yield conn
         conn.commit()
