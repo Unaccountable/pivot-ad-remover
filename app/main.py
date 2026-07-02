@@ -1,7 +1,7 @@
 import json, logging, threading
 from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import HTMLResponse, Response, FileResponse
+from fastapi.responses import HTMLResponse, Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from app.config import AUDIO_DIR
@@ -42,14 +42,46 @@ def serve_audio(filename: str):
     return FileResponse(path, media_type="audio/mpeg")
 
 @app.get("/audio/raw/{episode_id}")
-def serve_raw_audio(episode_id: int):
-    """Serve the uncut original audio so the review page can preview cuts."""
+def serve_raw_audio(episode_id: int, request: Request):
+    """Serve the uncut original audio with HTTP Range support so the review
+    page's audio player can seek to a mid-episode ad without downloading the
+    whole file."""
     with get_db() as db:
         ep = get_episode(db, episode_id)
     if not ep or not ep.get("raw_audio_path"): raise HTTPException(404)
     path = Path(ep["raw_audio_path"])
     if not path.exists(): raise HTTPException(404)
-    return FileResponse(path, media_type="audio/mpeg")
+    size = path.stat().st_size
+    range_header = request.headers.get("range")
+    if not range_header:
+        return FileResponse(path, media_type="audio/mpeg", headers={"Accept-Ranges": "bytes"})
+    try:
+        rng = range_header.split("=", 1)[1]
+        start_s, end_s = rng.split("-", 1)
+        start = int(start_s) if start_s else 0
+        end = int(end_s) if end_s else size - 1
+    except Exception:
+        start, end = 0, size - 1
+    start = max(0, start)
+    end = min(end, size - 1)
+    if start > end:
+        raise HTTPException(416, headers={"Content-Range": f"bytes */{size}"})
+    length = end - start + 1
+    def stream():
+        with open(path, "rb") as f:
+            f.seek(start)
+            remaining = length
+            while remaining > 0:
+                chunk = f.read(min(65536, remaining))
+                if not chunk: break
+                remaining -= len(chunk)
+                yield chunk
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+    }
+    return StreamingResponse(stream(), status_code=206, headers=headers, media_type="audio/mpeg")
 
 @app.get("/review/{episode_id}/transcript")
 def episode_transcript(episode_id: int):
