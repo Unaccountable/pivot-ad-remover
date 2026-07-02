@@ -14,9 +14,11 @@ WHISPER_COMPUTE = os.getenv("WHISPER_COMPUTE", "int8")
 
 AD_BUFFER_SECONDS = float(os.getenv("AD_BUFFER_SECONDS", "3.0"))
 AD_MIN_GAP_SECONDS = float(os.getenv("AD_MIN_GAP_SECONDS", "30.0"))
+# How far past an ad block to look for a "we're back" style resume phrase
+AD_RESUME_WINDOW_SECONDS = float(os.getenv("AD_RESUME_WINDOW_SECONDS", "90.0"))
 
 # Set to 0 to disable age filter (download all episodes)
-_age = os.getenv("MAX_EPISODE_AGE_DAYS", "90")
+_age = os.getenv("MAX_EPISODE_AGE_DAYS", "30")
 MAX_EPISODE_AGE_DAYS = int(_age) if _age else 0
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")

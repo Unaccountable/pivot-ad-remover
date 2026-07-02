@@ -9,6 +9,7 @@
   <div style="display:flex;gap:.8rem;">
     <button class="btn-success" onclick="saveAndPublish()">✅ Save & Publish</button>
     <button style="background:#333;color:#e8e8e8;" onclick="saveSegments()">💾 Save Only</button>
+    <button style="background:#1a2a3a;color:#7ab8e8;" onclick="redetect()">🔍 Re-detect Ads</button>
   </div>
 </div>
 <div style="background:#1a1a1a;border-radius:8px;padding:1.2rem;margin-bottom:1.5rem;">
@@ -47,6 +48,12 @@ function addSegment(){segments.push({start:0,end:30,approved:true,reasons:['manu
 async function saveSegments(){
   const r=await fetch(`/review/${EPISODE_ID}/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segments})});
   if(r.ok)alert('Saved!');
+}
+async function redetect(){
+  if(!confirm('Re-run ad detection? This replaces the current segment list.'))return;
+  const r=await fetch(`/admin/redetect/${EPISODE_ID}`,{method:'POST'});
+  if(r.ok){location.reload();}
+  else{const e=await r.json();alert('Failed: '+(e.detail||JSON.stringify(e)));}
 }
 async function saveAndPublish(){
   await fetch(`/review/${EPISODE_ID}/save`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({segments})});

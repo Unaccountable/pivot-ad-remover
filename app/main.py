@@ -81,6 +81,18 @@ def force_poll():
     threading.Thread(target=poll_once, daemon=True).start()
     return {"ok": True}
 
+@app.post("/admin/redetect/{episode_id}")
+def redetect(episode_id: int):
+    with get_db() as db:
+        ep = get_episode(db, episode_id)
+    if not ep: raise HTTPException(404)
+    if not ep["transcript_path"] or not Path(ep["transcript_path"]).exists():
+        raise HTTPException(400, "No transcript for this episode - retranscribe first")
+    segs = detect_ad_segments(Path(ep["transcript_path"]))
+    with get_db() as db:
+        db.execute("UPDATE episodes SET ad_segments=?, updated_at=datetime('now') WHERE id=?", (json.dumps(segs), episode_id))
+    return {"ok": True, "count": len(segs)}
+
 @app.post("/admin/retranscribe/{episode_id}")
 def retranscribe(episode_id: int):
     with get_db() as db: set_status(db, episode_id, "transcribing")

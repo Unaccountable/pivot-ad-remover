@@ -11,6 +11,15 @@ RSS Poll → Download MP3 → faster-whisper transcribe → Ad detection → [Yo
 - **Normally:** every 1 hour
 - **Tuesday & Friday 05:00–06:00 local time:** every 3 minutes (Pivot release window)
 
+## Episode Retention
+Only episodes newer than `MAX_EPISODE_AGE_DAYS` (default 30) are downloaded. Older episodes — including their audio files, transcripts, and database entries — are automatically deleted on each poll cycle. Set to `0` to disable both the download filter and cleanup.
+
+## Re-running Ad Detection
+If detection improves (or you change patterns), open an episode's review page and click **Re-detect Ads** to re-scan its existing transcript without re-transcribing. Or via curl:
+```bash
+curl -X POST http://localhost:8000/admin/redetect/<episode_id>
+```
+
 ## Setup
 
 ### 1. Create TrueNAS folder

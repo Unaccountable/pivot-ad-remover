@@ -42,6 +42,24 @@ def download_episode(url, dest):
                 f.write(chunk)
     return dest
 
+def cleanup_old_episodes():
+    """Delete audio/transcript files and DB rows for episodes past the age limit."""
+    if not MAX_EPISODE_AGE_DAYS:
+        return
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT id,title,pub_date,raw_audio_path,clean_audio_path,transcript_path FROM episodes"
+        ).fetchall()
+        for row in rows:
+            if not is_too_old(row["pub_date"]):
+                continue
+            for p in (row["raw_audio_path"], row["clean_audio_path"], row["transcript_path"]):
+                if p:
+                    try: Path(p).unlink(missing_ok=True)
+                    except OSError as e: log.warning("Could not delete %s: %s", p, e)
+            db.execute("DELETE FROM episodes WHERE id=?", (row["id"],))
+            log.info("Removed old episode: %s (%s)", row["title"], row["pub_date"])
+
 def poll_once():
     feed = fetch_feed()
     with get_db() as db:
@@ -89,7 +107,9 @@ def run_scheduler():
     log.info("Scheduler started. Fast=%ds Normal=%ds MAX_EPISODE_AGE_DAYS=%s",
              FAST_POLL_SECONDS, NORMAL_POLL_SECONDS, MAX_EPISODE_AGE_DAYS)
     while True:
-        try: poll_once()
+        try:
+            poll_once()
+            cleanup_old_episodes()
         except Exception as e: log.error("Scheduler error: %s", e)
         secs = get_sleep_seconds()
         log.info("Next poll in %dm%ds", secs//60, secs%60)
