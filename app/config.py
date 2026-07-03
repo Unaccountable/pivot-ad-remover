@@ -37,10 +37,9 @@ FEED_AUTHOR = "Kara Swisher & Scott Galloway"
 FEED_IMAGE = os.getenv("FEED_IMAGE", "https://megaphone.imgix.net/podcasts/d6280242-e5c9-11e8-a7e3-d766bb7d2d3e/image/bbb7849ef30865b87218347b3a090613.png?ixlib=rails-4.3.1&max-w=3000&max-h=3000&fit=crop&auto=format,compress")
 FEED_CATEGORY = os.getenv("FEED_CATEGORY", "News")
 FEED_OWNER_EMAIL = os.getenv("FEED_OWNER_EMAIL", "podcast@chmbrs.dev")
-# When the feed is behind HTTP Basic Auth, Pocket Casts authenticates the feed
-# fetch but NOT the audio enclosures. Set ENCLOSURE_AUTH="user:pass" to bake the
-# credentials into the episode URLs so playback works. The feed is itself
-# protected, so these creds are only visible to already-authenticated clients.
-# URL-encode any reserved characters (@ : / ?) in the password.
-ENCLOSURE_AUTH = os.getenv("ENCLOSURE_AUTH", "")
+# Secret token required as a ?t=... query param on the public feed and audio
+# URLs. Unlike Basic Auth (which Pocket Casts won't send to enclosures), query
+# tokens are preserved, so playback works. Leave empty to disable. Use a
+# URL-safe value (e.g. secrets.token_urlsafe).
+FEED_TOKEN = os.getenv("FEED_TOKEN", "")
 SECRET_KEY = os.getenv("SECRET_KEY", "changeme-in-production")

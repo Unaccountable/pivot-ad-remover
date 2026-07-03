@@ -1,10 +1,10 @@
-import json, logging, threading
+import json, logging, secrets, threading
 from pathlib import Path
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from app.config import AUDIO_DIR
+from app.config import AUDIO_DIR, FEED_TOKEN
 from app.database import init_db, get_db, get_episode, set_status
 from app.scheduler import run_scheduler, poll_once
 from app.transcriber import run_transcriber
@@ -31,8 +31,16 @@ def startup():
     threading.Thread(target=run_transcriber, daemon=True).start()
     log.info("Pivot Ad-Free started.")
 
+def _check_token(request: Request):
+    """Require ?t=<FEED_TOKEN> on public feed/audio requests (no-op if unset)."""
+    if not FEED_TOKEN:
+        return
+    if not secrets.compare_digest(request.query_params.get("t", ""), FEED_TOKEN):
+        raise HTTPException(403, "Invalid or missing token")
+
 @app.get("/feed.xml")
-def rss_feed():
+def rss_feed(request: Request):
+    _check_token(request)
     return Response(content=generate_feed(), media_type="application/rss+xml")
 
 def _serve_audio_file(path: Path, request: Request):
@@ -74,6 +82,7 @@ def _serve_audio_file(path: Path, request: Request):
 
 @app.get("/audio/{filename}")
 def serve_audio(filename: str, request: Request):
+    _check_token(request)
     return _serve_audio_file(AUDIO_DIR / "clean" / filename, request)
 
 @app.get("/audio/raw/{episode_id}")

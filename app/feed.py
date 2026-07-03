@@ -2,19 +2,16 @@ import json
 from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
-from app.config import BASE_URL, FEED_TITLE, FEED_DESCRIPTION, FEED_AUTHOR, FEED_IMAGE, FEED_CATEGORY, FEED_OWNER_EMAIL, ENCLOSURE_AUTH
+from app.config import BASE_URL, FEED_TITLE, FEED_DESCRIPTION, FEED_AUTHOR, FEED_IMAGE, FEED_CATEGORY, FEED_OWNER_EMAIL, FEED_TOKEN
 from app.database import get_db
 
 def _dur(secs):
     if not secs: return "0:00:00"
     return f"{int(secs//3600)}:{int((secs%3600)//60):02d}:{int(secs%60):02d}"
 
-def _audio_base():
-    """Base URL for episode audio, with Basic Auth credentials embedded if set."""
-    if ENCLOSURE_AUTH and "://" in BASE_URL:
-        scheme, rest = BASE_URL.split("://", 1)
-        return f"{scheme}://{ENCLOSURE_AUTH}@{rest}"
-    return BASE_URL
+def _token_qs():
+    """Query string carrying the access token for audio URLs (empty if disabled)."""
+    return f"?t={FEED_TOKEN}" if FEED_TOKEN else ""
 
 def generate_feed():
     with get_db() as db:
@@ -22,7 +19,7 @@ def generate_feed():
     items = []
     for row in rows:
         ep = dict(row)
-        audio_url = f"{_audio_base()}/audio/{Path(ep['clean_audio_path']).name}"
+        audio_url = f"{BASE_URL}/audio/{Path(ep['clean_audio_path']).name}{_token_qs()}"
         try: size = Path(ep["clean_audio_path"]).stat().st_size
         except: size = 0
         duration = _dur(ep.get("duration_secs"))
