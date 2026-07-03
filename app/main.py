@@ -35,21 +35,10 @@ def startup():
 def rss_feed():
     return Response(content=generate_feed(), media_type="application/rss+xml")
 
-@app.get("/audio/{filename}")
-def serve_audio(filename: str):
-    path = AUDIO_DIR / "clean" / filename
-    if not path.exists(): raise HTTPException(404)
-    return FileResponse(path, media_type="audio/mpeg")
-
-@app.get("/audio/raw/{episode_id}")
-def serve_raw_audio(episode_id: int, request: Request):
-    """Serve the uncut original audio with HTTP Range support so the review
-    page's audio player can seek to a mid-episode ad without downloading the
-    whole file."""
-    with get_db() as db:
-        ep = get_episode(db, episode_id)
-    if not ep or not ep.get("raw_audio_path"): raise HTTPException(404)
-    path = Path(ep["raw_audio_path"])
+def _serve_audio_file(path: Path, request: Request):
+    """Serve an audio file with HTTP Range support (206) so podcast clients and
+    the review player can seek without downloading the whole file. This Starlette
+    version's FileResponse ignores Range, so we handle it ourselves."""
     if not path.exists(): raise HTTPException(404)
     size = path.stat().st_size
     range_header = request.headers.get("range")
@@ -82,6 +71,18 @@ def serve_raw_audio(episode_id: int, request: Request):
         "Content-Length": str(length),
     }
     return StreamingResponse(stream(), status_code=206, headers=headers, media_type="audio/mpeg")
+
+@app.get("/audio/{filename}")
+def serve_audio(filename: str, request: Request):
+    return _serve_audio_file(AUDIO_DIR / "clean" / filename, request)
+
+@app.get("/audio/raw/{episode_id}")
+def serve_raw_audio(episode_id: int, request: Request):
+    """Serve the uncut original audio (used by the review page's player)."""
+    with get_db() as db:
+        ep = get_episode(db, episode_id)
+    if not ep or not ep.get("raw_audio_path"): raise HTTPException(404)
+    return _serve_audio_file(Path(ep["raw_audio_path"]), request)
 
 @app.get("/review/{episode_id}/transcript")
 def episode_transcript(episode_id: int):
