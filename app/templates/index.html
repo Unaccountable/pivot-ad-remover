@@ -20,7 +20,7 @@
     </td>
     <td style="padding:.8rem;">
       {% if ep.status == 'pending_review' %}<a href="/review/{{ ep.id }}"><button class="btn-primary" style="font-size:.8rem;">Review</button></a>
-      {% elif ep.status == 'published' %}<a href="/review/{{ ep.id }}"><button style="background:#333;color:#e8e8e8;font-size:.8rem;">View</button></a>
+      {% elif ep.status == 'published' %}<a href="/review/{{ ep.id }}"><button style="background:#333;color:#e8e8e8;font-size:.8rem;">Edit</button></a>
       {% elif ep.status == 'error' %}<a href="/review/{{ ep.id }}"><button class="btn-danger" style="font-size:.8rem;">Retry</button></a>{% endif %}
     </td>
   </tr>{% endfor %}</tbody>

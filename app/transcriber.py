@@ -1,7 +1,9 @@
 import json, logging, time
 from pathlib import Path
-from app.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE, WHISPER_CPU_THREADS, DATA_DIR
+from app.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE, WHISPER_CPU_THREADS, DATA_DIR, AUTO_PUBLISH
 from app.database import get_db, set_status
+from app.detector import detect_ad_segments
+from app.processor import process_episode
 
 log = logging.getLogger(__name__)
 TRANSCRIPT_DIR = DATA_DIR / "transcripts"
@@ -32,12 +34,34 @@ def run_transcriber():
     while True:
         with get_db() as db:
             row = db.execute("SELECT * FROM episodes WHERE status='transcribing' ORDER BY id LIMIT 1").fetchone()
-            if row:
-                ep = dict(row)
-                try:
-                    tp = transcribe_episode(ep)
-                    db.execute("UPDATE episodes SET transcript_path=?, status='pending_review', updated_at=datetime('now') WHERE id=?", (str(tp), ep["id"]))
-                except Exception as e:
-                    set_status(db, ep["id"], "error", str(e))
+        if not row:
+            time.sleep(30)
+            continue
+        ep = dict(row)
+        # Transcribe (long-running) without holding a DB connection open.
+        try:
+            tp = transcribe_episode(ep)
+        except Exception as e:
+            with get_db() as db:
+                set_status(db, ep["id"], "error", str(e))
+            continue
+
+        segs = detect_ad_segments(tp) if AUTO_PUBLISH else None
+        with get_db() as db:
+            if AUTO_PUBLISH:
+                db.execute("UPDATE episodes SET transcript_path=?, ad_segments=?, status='pending_review', updated_at=datetime('now') WHERE id=?",
+                           (str(tp), json.dumps(segs), ep["id"]))
             else:
-                time.sleep(30)
+                db.execute("UPDATE episodes SET transcript_path=?, status='pending_review', updated_at=datetime('now') WHERE id=?",
+                           (str(tp), ep["id"]))
+
+        # Auto-publish: cut the ads and publish immediately. The episode stays
+        # editable afterward via the review page (re-save republishes).
+        if AUTO_PUBLISH:
+            try:
+                process_episode(ep["id"])
+                log.info("Auto-published episode %s (%d ad segments)", ep["id"], len(segs))
+            except Exception as e:
+                with get_db() as db:
+                    set_status(db, ep["id"], "error", "auto-publish failed: " + str(e))
+                log.error("Auto-publish failed for %s: %s", ep["id"], e)

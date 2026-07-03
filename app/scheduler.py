@@ -3,16 +3,18 @@ import datetime, logging, time, httpx, feedparser
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
-from app.config import PIVOT_RSS, AUDIO_DIR, MAX_EPISODE_AGE_DAYS
+from zoneinfo import ZoneInfo
+from app.config import PIVOT_RSS, AUDIO_DIR, MAX_EPISODE_AGE_DAYS, SCHEDULE_TZ
 from app.database import get_db, set_status
 
 log = logging.getLogger(__name__)
-RELEASE_WEEKDAYS = {1, 4}
-RELEASE_WINDOW_START, RELEASE_WINDOW_END = 5, 6
+RELEASE_WEEKDAYS = {1, 4}  # Tue, Fri (Mon=0)
+# Poll fast from 5am up to 8am local time to reliably catch the ~6am ET drop.
+RELEASE_WINDOW_START, RELEASE_WINDOW_END = 5, 8
 FAST_POLL_SECONDS, NORMAL_POLL_SECONDS = 180, 3600
 
 def get_sleep_seconds():
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(ZoneInfo(SCHEDULE_TZ))
     if now.weekday() in RELEASE_WEEKDAYS and RELEASE_WINDOW_START <= now.hour < RELEASE_WINDOW_END:
         return FAST_POLL_SECONDS
     return NORMAL_POLL_SECONDS

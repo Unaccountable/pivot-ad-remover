@@ -7,6 +7,12 @@ DB_PATH = DATA_DIR / "pivot.db"
 
 PIVOT_RSS = "https://feeds.megaphone.fm/pivot"
 POLL_INTERVAL_HOURS = int(os.getenv("POLL_INTERVAL_HOURS", "1"))
+# Timezone for the fast-poll release window (Pivot releases on Eastern time)
+SCHEDULE_TZ = os.getenv("SCHEDULE_TZ", "America/New_York")
+
+# Auto-cut and publish as soon as an episode is transcribed, without waiting for
+# manual review. You can still open a published episode and re-edit/re-publish.
+AUTO_PUBLISH = os.getenv("AUTO_PUBLISH", "true").strip().lower() in ("1", "true", "yes", "on")
 
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")

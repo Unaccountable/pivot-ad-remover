@@ -124,7 +124,7 @@ def publish_episode(episode_id: int):
     with get_db() as db:
         ep = get_episode(db, episode_id)
         if not ep: raise HTTPException(404)
-        if ep["status"] not in ("pending_review","error"):
+        if ep["status"] not in ("pending_review","error","published"):
             raise HTTPException(400, f"Status is '{ep['status']}'")
     threading.Thread(target=process_episode, args=(episode_id,), daemon=True).start()
     return {"ok": True}
