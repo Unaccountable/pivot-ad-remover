@@ -2,7 +2,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from xml.sax.saxutils import escape
-from app.config import BASE_URL
+from app.config import BASE_URL, ARTWORK_DIR
 from app.database import get_db
 
 def _dur(secs):
@@ -14,9 +14,15 @@ def _feed_path(pod):
     return "/feed.xml" if pod["slug"] == "pivot" else f"/feed/{pod['slug']}.xml"
 
 def _image_url(pod):
-    """Uploaded artwork on the NAS overrides the source feed's image."""
+    """Uploaded artwork on the NAS overrides the source feed's image. A ?v=<mtime>
+    cache-buster makes the URL change on each re-upload so podcast apps (which
+    cache cover art by URL) re-fetch the new image."""
     if pod.get("image_file"):
-        return f"{BASE_URL}/artwork/{pod['slug']}"
+        try:
+            v = int((ARTWORK_DIR / pod["image_file"]).stat().st_mtime)
+        except OSError:
+            v = 0
+        return f"{BASE_URL}/artwork/{pod['slug']}?v={v}"
     return pod.get("image_url") or ""
 
 def generate_feed(pod):
