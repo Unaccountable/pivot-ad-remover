@@ -3,10 +3,29 @@ from pathlib import Path
 
 DATA_DIR = Path(os.getenv("DATA_DIR", "/data"))
 AUDIO_DIR = DATA_DIR / "audio"
+# Artwork uploads and human-readable processing logs live on the NAS mount
+# (AUDIO_DIR is the NAS-backed volume), so they survive container rebuilds.
+ARTWORK_DIR = AUDIO_DIR / "artwork"
+LOG_DIR = AUDIO_DIR / "logs"
+PROCESSING_LOG_FILE = LOG_DIR / "processing.log"
 DB_PATH = DATA_DIR / "pivot.db"
 
 PIVOT_RSS = "https://feeds.megaphone.fm/pivot"
 POLL_INTERVAL_HOURS = int(os.getenv("POLL_INTERVAL_HOURS", "1"))
+
+# --- LLM ad detection (pluggable) ---------------------------------------
+# Provider for ad detection: "anthropic" (Haiku via API), "local" (reserved
+# for a future Ollama/llama.cpp backend), or "none" to force the regex path.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5")
+# Base URL for a future local/OpenAI-compatible endpoint (unused by anthropic).
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").strip()
+
+# Delete published episodes this many days after they are cut/published
+# (0 = keep forever). Distinct from MAX_EPISODE_AGE_DAYS, which is the
+# download window for new episodes.
+RETENTION_DAYS = int(os.getenv("RETENTION_DAYS", "30") or 0)
 # Timezone for the fast-poll release window (Pivot releases on Eastern time)
 SCHEDULE_TZ = os.getenv("SCHEDULE_TZ", "America/New_York")
 

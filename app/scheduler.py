@@ -1,21 +1,35 @@
-"""Poll the Pivot RSS feed. Hourly normally; every 3min Tue+Fri 05-06."""
+"""Poll each podcast's RSS feed. Hourly normally; every 3 min inside a
+podcast's configured fast-poll release window."""
 import datetime, logging, time, httpx, feedparser
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
-from app.config import PIVOT_RSS, AUDIO_DIR, MAX_EPISODE_AGE_DAYS, SCHEDULE_TZ
-from app.database import get_db, set_status
+from app.config import AUDIO_DIR, MAX_EPISODE_AGE_DAYS, SCHEDULE_TZ, RETENTION_DAYS
+from app.database import get_db, set_status, list_podcasts
 
 log = logging.getLogger(__name__)
-RELEASE_WEEKDAYS = {1, 4}  # Tue, Fri (Mon=0)
-# Poll fast from 5am up to 8am local time to reliably catch the ~6am ET drop.
-RELEASE_WINDOW_START, RELEASE_WINDOW_END = 5, 8
 FAST_POLL_SECONDS, NORMAL_POLL_SECONDS = 180, 3600
 
+def _fast_weekdays(pod):
+    try:
+        return {int(x) for x in (pod.get("fast_weekdays") or "").split(",") if x != ""}
+    except ValueError:
+        return set()
+
+def _in_fast_window(pod, now):
+    days = _fast_weekdays(pod)
+    hs, he = pod.get("fast_hour_start"), pod.get("fast_hour_end")
+    if not days or hs is None or he is None:
+        return False
+    return now.weekday() in days and hs <= now.hour < he
+
 def get_sleep_seconds():
+    """Fast cadence if ANY active podcast is currently in its release window."""
     now = datetime.datetime.now(ZoneInfo(SCHEDULE_TZ))
-    if now.weekday() in RELEASE_WEEKDAYS and RELEASE_WINDOW_START <= now.hour < RELEASE_WINDOW_END:
+    with get_db() as db:
+        pods = list_podcasts(db, active_only=True)
+    if any(_in_fast_window(p, now) for p in pods):
         return FAST_POLL_SECONDS
     return NORMAL_POLL_SECONDS
 
@@ -25,8 +39,8 @@ def is_too_old(pub_date_str: str) -> bool:
         return False
     try:
         pub = parsedate_to_datetime(pub_date_str)
-        # A "-0000" timezone (which the Pivot feed uses) yields a naive
-        # datetime; treat it as UTC so the comparison below doesn't raise.
+        # A "-0000" timezone (common in these feeds) yields a naive datetime;
+        # treat it as UTC so the comparison below doesn't raise.
         if pub.tzinfo is None:
             pub = pub.replace(tzinfo=datetime.timezone.utc)
         cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=MAX_EPISODE_AGE_DAYS)
@@ -36,21 +50,16 @@ def is_too_old(pub_date_str: str) -> bool:
         return False
 
 def stable_guid(entry):
-    """Return a dedup key that survives Megaphone rewriting URLs.
-
-    The feed's guid/link is often a tracking URL whose ?updated=<timestamp>
-    query param changes over time. Using it raw makes every episode look new
-    on each poll, causing endless re-downloads. Strip the query/fragment so
-    the same episode always maps to the same key.
-    """
+    """Return a dedup key that survives Megaphone rewriting URLs (strip the
+    ?updated= query so the same episode always maps to the same key)."""
     raw = entry.get("id") or entry.get("link") or ""
     if raw.startswith("http"):
         parts = urlsplit(raw)
         raw = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
     return raw
 
-def fetch_feed():
-    resp = httpx.get(PIVOT_RSS, timeout=30, follow_redirects=True)
+def fetch_feed(url):
+    resp = httpx.get(url, timeout=30, follow_redirects=True)
     resp.raise_for_status()
     return feedparser.parse(resp.text)
 
@@ -64,77 +73,96 @@ def download_episode(url, dest):
                 f.write(chunk)
     return dest
 
+def _delete_files(row):
+    for p in (row["raw_audio_path"], row["clean_audio_path"], row["transcript_path"]):
+        if p:
+            try: Path(p).unlink(missing_ok=True)
+            except OSError as e: log.warning("Could not delete %s: %s", p, e)
+
 def cleanup_old_episodes():
-    """Delete audio/transcript files and DB rows for episodes past the age limit."""
-    if not MAX_EPISODE_AGE_DAYS:
-        return
+    """Remove downloaded episodes past the download age limit, and published
+    episodes past the retention window (deleted RETENTION_DAYS after publish)."""
+    now = datetime.datetime.now(datetime.timezone.utc)
     with get_db() as db:
         rows = db.execute(
-            "SELECT id,title,pub_date,raw_audio_path,clean_audio_path,transcript_path FROM episodes"
+            "SELECT id,title,pub_date,status,published_at,raw_audio_path,"
+            "clean_audio_path,transcript_path FROM episodes"
         ).fetchall()
         for row in rows:
-            if not is_too_old(row["pub_date"]):
+            drop = False
+            if MAX_EPISODE_AGE_DAYS and is_too_old(row["pub_date"]):
+                drop = True
+            elif RETENTION_DAYS and row["status"] == "published" and row["published_at"]:
+                try:
+                    pubd = datetime.datetime.fromisoformat(row["published_at"]).replace(tzinfo=datetime.timezone.utc)
+                    if now - pubd > datetime.timedelta(days=RETENTION_DAYS):
+                        drop = True
+                except ValueError:
+                    pass
+            if not drop:
                 continue
-            for p in (row["raw_audio_path"], row["clean_audio_path"], row["transcript_path"]):
-                if p:
-                    try: Path(p).unlink(missing_ok=True)
-                    except OSError as e: log.warning("Could not delete %s: %s", p, e)
+            _delete_files(row)
             db.execute("DELETE FROM episodes WHERE id=?", (row["id"],))
-            log.info("Removed old episode: %s (%s)", row["title"], row["pub_date"])
+            log.info("Removed episode: %s (%s)", row["title"], row["pub_date"])
+
+def poll_podcast(db, pod):
+    feed = fetch_feed(pod["source_rss"])
+    for entry in feed.entries:
+        guid = stable_guid(entry)
+        if not guid:
+            continue
+        pub_date = entry.get("published", "")
+        if is_too_old(pub_date):
+            continue
+        if db.execute("SELECT id FROM episodes WHERE guid=?", (guid,)).fetchone():
+            continue
+        audio_url = next((e.href for e in entry.get("enclosures", []) if "audio" in e.get("type", "")), None)
+        if not audio_url:
+            continue
+        title = entry.get("title", "Unknown")
+        duration_secs = None
+        if entry.get("itunes_duration"):
+            parts = str(entry.itunes_duration).split(":")
+            try:
+                if len(parts) == 3: duration_secs = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+                elif len(parts) == 2: duration_secs = int(parts[0]) * 60 + float(parts[1])
+                else: duration_secs = float(parts[0])
+            except ValueError: pass
+        safe = guid.replace("/", "_").replace(":", "_")[-60:]
+        raw_path = AUDIO_DIR / "raw" / f"{safe}.mp3"
+        db.execute(
+            "INSERT INTO episodes (podcast_id,guid,title,description,pub_date,original_url,duration_secs,raw_audio_path,status) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (pod["id"], guid, title, entry.get("summary", ""), pub_date, audio_url, duration_secs, str(raw_path), "downloading"),
+        )
+        eid = db.execute("SELECT id FROM episodes WHERE guid=?", (guid,)).fetchone()[0]
+        log.info("New episode [%s]: %s (id=%s)", pod["name"], title, eid)
+        try:
+            download_episode(audio_url, raw_path)
+            set_status(db, eid, "transcribing")
+        except Exception as e:
+            set_status(db, eid, "error", str(e))
+            log.error("Download failed %s: %s", title, e)
 
 def poll_once():
-    feed = fetch_feed()
     with get_db() as db:
-        for entry in feed.entries:
-            guid = stable_guid(entry)
-            if not guid:
-                continue
-            pub_date = entry.get("published", "")
-
-            if is_too_old(pub_date):
-                log.debug("Skipping old episode: %s (%s)", entry.get("title","?"), pub_date)
-                continue
-
-            if db.execute("SELECT id FROM episodes WHERE guid=?", (guid,)).fetchone():
-                continue
-
-            audio_url = next((e.href for e in entry.get("enclosures", []) if "audio" in e.get("type","")), None)
-            if not audio_url:
-                continue
-
-            title = entry.get("title", "Unknown")
-            duration_secs = None
-            if entry.get("itunes_duration"):
-                parts = str(entry.itunes_duration).split(":")
-                try:
-                    if len(parts)==3: duration_secs = int(parts[0])*3600+int(parts[1])*60+float(parts[2])
-                    elif len(parts)==2: duration_secs = int(parts[0])*60+float(parts[1])
-                    else: duration_secs = float(parts[0])
-                except ValueError: pass
-
-            safe = guid.replace("/","_").replace(":","_")[-60:]
-            raw_path = AUDIO_DIR / "raw" / f"{safe}.mp3"
-            db.execute(
-                "INSERT INTO episodes (guid,title,description,pub_date,original_url,duration_secs,raw_audio_path,status) VALUES (?,?,?,?,?,?,?,?)",
-                (guid, title, entry.get("summary",""), pub_date, audio_url, duration_secs, str(raw_path), "downloading"),
-            )
-            eid = db.execute("SELECT id FROM episodes WHERE guid=?", (guid,)).fetchone()[0]
-            log.info("New episode: %s (id=%s)", title, eid)
-            try:
-                download_episode(audio_url, raw_path)
-                set_status(db, eid, "transcribing")
-            except Exception as e:
-                set_status(db, eid, "error", str(e))
-                log.error("Download failed %s: %s", title, e)
+        pods = list_podcasts(db, active_only=True)
+    for pod in pods:
+        try:
+            with get_db() as db:
+                poll_podcast(db, pod)
+        except Exception as e:
+            log.error("Poll failed for %s: %s", pod["name"], e)
 
 def run_scheduler():
-    log.info("Scheduler started. Fast=%ds Normal=%ds MAX_EPISODE_AGE_DAYS=%s",
-             FAST_POLL_SECONDS, NORMAL_POLL_SECONDS, MAX_EPISODE_AGE_DAYS)
+    log.info("Scheduler started. Fast=%ds Normal=%ds MAX_AGE=%s RETENTION=%s",
+             FAST_POLL_SECONDS, NORMAL_POLL_SECONDS, MAX_EPISODE_AGE_DAYS, RETENTION_DAYS)
     while True:
         try:
             poll_once()
             cleanup_old_episodes()
-        except Exception as e: log.error("Scheduler error: %s", e)
+        except Exception as e:
+            log.error("Scheduler error: %s", e)
         secs = get_sleep_seconds()
-        log.info("Next poll in %dm%ds", secs//60, secs%60)
+        log.info("Next poll in %dm%ds", secs // 60, secs % 60)
         time.sleep(secs)

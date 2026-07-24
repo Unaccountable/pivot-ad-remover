@@ -2,7 +2,7 @@ import json, logging, time
 from pathlib import Path
 from app.config import WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE, WHISPER_CPU_THREADS, DATA_DIR, AUTO_PUBLISH
 from app.database import get_db, set_status
-from app.detector import detect_ad_segments
+from app.llm_detector import detect_ads
 from app.processor import process_episode
 
 log = logging.getLogger(__name__)
@@ -46,11 +46,14 @@ def run_transcriber():
                 set_status(db, ep["id"], "error", str(e))
             continue
 
-        segs = detect_ad_segments(tp) if AUTO_PUBLISH else None
+        if AUTO_PUBLISH:
+            segs, detector = detect_ads(tp)
+        else:
+            segs, detector = None, None
         with get_db() as db:
             if AUTO_PUBLISH:
-                db.execute("UPDATE episodes SET transcript_path=?, ad_segments=?, status='pending_review', updated_at=datetime('now') WHERE id=?",
-                           (str(tp), json.dumps(segs), ep["id"]))
+                db.execute("UPDATE episodes SET transcript_path=?, ad_segments=?, detector=?, status='pending_review', updated_at=datetime('now') WHERE id=?",
+                           (str(tp), json.dumps(segs), detector, ep["id"]))
             else:
                 db.execute("UPDATE episodes SET transcript_path=?, status='pending_review', updated_at=datetime('now') WHERE id=?",
                            (str(tp), ep["id"]))
@@ -60,7 +63,7 @@ def run_transcriber():
         if AUTO_PUBLISH:
             try:
                 process_episode(ep["id"])
-                log.info("Auto-published episode %s (%d ad segments)", ep["id"], len(segs))
+                log.info("Auto-published episode %s via %s (%d ad segments)", ep["id"], detector, len(segs))
             except Exception as e:
                 with get_db() as db:
                     set_status(db, ep["id"], "error", "auto-publish failed: " + str(e))

@@ -1,24 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.2rem;">
   <h2>Episodes</h2>
   <button class="btn-primary" onclick="forcePoll()">🔄 Poll RSS Now</button>
 </div>
-{% if not episodes %}<p style="color:#888;">No episodes yet. Click Poll RSS Now.</p>{% endif %}
-<table style="width:100%;border-collapse:collapse;">
-  <thead><tr style="border-bottom:1px solid #2a2a2a;text-align:left;color:#888;font-size:.85rem;">
-    <th style="padding:.6rem .8rem;">Title</th><th style="padding:.6rem .8rem;">Published</th>
-    <th style="padding:.6rem .8rem;">Status</th><th style="padding:.6rem .8rem;">Actions</th>
-  </tr></thead>
+
+<div style="margin-bottom:1rem;">
+  <a href="/" style="margin-right:.8rem;font-size:.85rem;{{ 'color:#e8e8e8;font-weight:600' if not selected else '' }}">All</a>
+  {% for p in podcasts %}
+    <a href="/?podcast_id={{ p.id }}" style="margin-right:.8rem;font-size:.85rem;{{ 'color:#e8e8e8;font-weight:600' if selected==p.id else '' }}">{{ p.name }}</a>
+  {% endfor %}
+</div>
+
+{% if not episodes %}<p class="muted">No episodes yet. Add a podcast, or click Poll RSS Now.</p>{% endif %}
+<table>
+  <thead><tr><th>Title</th><th>Podcast</th><th>Published</th><th>Status</th><th>Detector</th><th>Actions</th></tr></thead>
   <tbody>{% for ep in episodes %}
-  <tr style="border-bottom:1px solid #1f1f1f;">
-    <td style="padding:.8rem;">{{ ep.title }}</td>
-    <td style="padding:.8rem;color:#888;font-size:.85rem;">{{ ep.pub_date[:16] if ep.pub_date else '-' }}</td>
-    <td style="padding:.8rem;">
+  <tr>
+    <td>{{ ep.title }}</td>
+    <td class="muted">{{ ep.pod or '-' }}</td>
+    <td class="muted">{{ ep.pub_date[:16] if ep.pub_date else '-' }}</td>
+    <td>
       <span class="badge badge-{{ ep.status }}">{{ ep.status.replace('_',' ') }}</span>
       {% if ep.error_msg %}<div style="color:#ff6b6b;font-size:.75rem;margin-top:4px;">{{ ep.error_msg[:80] }}</div>{% endif %}
     </td>
-    <td style="padding:.8rem;">
+    <td class="muted" style="font-size:.75rem;">{{ ep.detector or '' }}</td>
+    <td>
       {% if ep.status == 'pending_review' %}<a href="/review/{{ ep.id }}"><button class="btn-primary" style="font-size:.8rem;">Review</button></a>
       {% elif ep.status == 'published' %}<a href="/review/{{ ep.id }}"><button style="background:#333;color:#e8e8e8;font-size:.8rem;">Edit</button></a>
       {% elif ep.status == 'error' %}<a href="/review/{{ ep.id }}"><button class="btn-danger" style="font-size:.8rem;">Retry</button></a>{% endif %}

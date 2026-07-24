@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin-bottom:1.2rem;">Podcasts</h2>
+
+<div class="card">
+  <h3 style="font-size:1rem;color:#aaa;margin-bottom:.6rem;">Add a podcast</h3>
+  <form method="post" action="/podcasts">
+    <label>Source RSS feed URL *</label>
+    <input type="url" name="source_rss" required placeholder="https://feeds.example.com/show" style="width:100%;"/>
+    <label>Name (optional — defaults to the feed's title)</label>
+    <input type="text" name="name" placeholder="My Show (Ad-Free)" style="width:100%;"/>
+    <p class="muted" style="margin-top:.8rem;">Optional fast-poll window — poll every 3 min during expected release times (leave blank for hourly only).</p>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <div><label>Weekdays (Mon=0 … Sun=6, comma-sep)</label><input type="text" name="fast_weekdays" placeholder="1,4" style="width:140px;"/></div>
+      <div><label>From hour</label><input type="number" name="fast_hour_start" min="0" max="23" placeholder="5" style="width:90px;"/></div>
+      <div><label>To hour</label><input type="number" name="fast_hour_end" min="0" max="24" placeholder="8" style="width:90px;"/></div>
+    </div>
+    <button class="btn-primary" style="margin-top:1rem;">Add podcast</button>
+  </form>
+</div>
+
+{% for p in podcasts %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;">
+    <div style="display:flex;gap:1rem;align-items:flex-start;">
+      {% set img = (base_url ~ '/artwork/' ~ p.slug) if p.image_file else p.image_url %}
+      {% if img %}<img src="{{ img }}" alt="" style="width:64px;height:64px;border-radius:8px;object-fit:cover;background:#111;"/>{% endif %}
+      <div>
+        <div style="font-size:1.05rem;font-weight:600;">{{ p.name }}
+          {% if not p.active %}<span class="badge badge-pending" style="margin-left:.4rem;">paused</span>{% endif %}
+        </div>
+        <div class="muted" style="margin-top:.2rem;">{{ p.source_rss }}</div>
+        {% if p.fast_weekdays %}<div class="muted">fast poll: weekdays {{ p.fast_weekdays }} · {{ p.fast_hour_start }}:00–{{ p.fast_hour_end }}:00</div>{% endif %}
+      </div>
+    </div>
+    <div style="display:flex;gap:.5rem;">
+      <a href="/podcasts/{{ p.id }}/edit"><button style="background:#333;color:#e8e8e8;font-size:.8rem;">Edit</button></a>
+      <form method="post" action="/podcasts/{{ p.id }}/delete" onsubmit="return confirm('Delete {{ p.name }} and all its episodes?');">
+        <button class="btn-danger" style="font-size:.8rem;">Delete</button>
+      </form>
+    </div>
+  </div>
+
+  <div style="margin-top:.9rem;font-size:.85rem;">
+    <label style="margin:0 0 .2rem;">Subscribe URL</label>
+    <code>{{ base_url }}{{ feed_path(p) }}?t={{ p.feed_token }}</code>
+    <form method="post" action="/podcasts/{{ p.id }}/regenerate-token" style="display:inline;margin-left:.5rem;" onsubmit="return confirm('Rotate token? Existing subscriptions to this feed will break.');">
+      <button style="background:#2a2a2a;color:#aaa;font-size:.72rem;padding:3px 8px;">rotate token</button>
+    </form>
+  </div>
+
+  <form method="post" action="/podcasts/{{ p.id }}/artwork" enctype="multipart/form-data" style="margin-top:.8rem;display:flex;align-items:center;gap:.6rem;">
+    <label style="margin:0;">Custom artwork:</label>
+    <input type="file" name="artwork" accept="image/*" style="font-size:.8rem;"/>
+    <button style="background:#2a2a2a;color:#aaa;font-size:.72rem;padding:4px 10px;">Upload</button>
+    {% if p.image_file %}<span class="muted">current: {{ p.image_file }}</span>{% endif %}
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

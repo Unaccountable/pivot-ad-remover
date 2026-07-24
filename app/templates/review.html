@@ -5,6 +5,7 @@
     <a href="/" style="color:#888;font-size:.9rem;">← Episodes</a>
     <h2 style="margin-top:.3rem;">{{ ep.title }}</h2>
     <span class="badge badge-{{ ep.status }}" style="margin-top:.4rem;">{{ ep.status.replace('_',' ') }}</span>
+    {% if ep.detector %}<span style="color:#666;font-size:.75rem;margin-left:.5rem;">detector: {{ ep.detector }}</span>{% endif %}
   </div>
   <div style="display:flex;gap:.8rem;">
     <button class="btn-success" onclick="saveAndPublish()">✅ Save &amp; Publish</button>

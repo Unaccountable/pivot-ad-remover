@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin-bottom:1rem;">Processing logs</h2>
+
+<form method="get" action="/logs" class="card" style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:1.2rem;">
+  <div><label>Search title</label><input type="text" name="q" value="{{ q }}" placeholder="episode title…"/></div>
+  <div><label>Podcast</label>
+    <select name="podcast_id">
+      <option value="">All</option>
+      {% for p in podcasts %}<option value="{{ p.id }}" {{ 'selected' if selected==p.id else '' }}>{{ p.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div><label>Status</label>
+    <select name="status">
+      <option value="">Any</option>
+      <option value="published" {{ 'selected' if status=='published' else '' }}>Published</option>
+      <option value="failed" {{ 'selected' if status=='failed' else '' }}>Failed</option>
+    </select>
+  </div>
+  <button class="btn-primary">Search</button>
+  <a href="/logs" class="muted" style="align-self:center;">clear</a>
+</form>
+
+<p class="muted" style="margin-bottom:.6rem;">Also written to <code>/data/audio/logs/processing.log</code> on the NAS.</p>
+{% if not logs %}<p class="muted">No log entries match.</p>{% endif %}
+<table>
+  <thead><tr><th>When</th><th>Podcast</th><th>Episode</th><th>Status</th><th>Detector</th><th>Result</th></tr></thead>
+  <tbody>{% for r in logs %}
+  <tr>
+    <td class="muted" style="white-space:nowrap;">{{ r.ts[:19] if r.ts else '' }}</td>
+    <td class="muted">{{ r.podcast_name or '-' }}</td>
+    <td>{{ r.episode_title }}</td>
+    <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+    <td class="muted" style="font-size:.78rem;">{{ r.detector or '' }}</td>
+    <td class="muted" style="font-size:.8rem;">
+      {% if r.status == 'published' %}
+        {{ r.segments }} seg{% if r.cut_secs %} · cut {{ (r.cut_secs|int)//60 }}m{{ '%02d'|format((r.cut_secs|int)%60) }}{% endif %}
+      {% elif r.error %}<span style="color:#ff6b6b;">{{ r.error[:120] }}</span>{% endif %}
+    </td>
+  </tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="/podcasts" class="muted">← Podcasts</a>
+<h2 style="margin:.4rem 0 1.2rem;">Edit {{ pod.name }}</h2>
+<div class="card">
+  <form method="post" action="/podcasts/{{ pod.id }}">
+    <label>Name</label>
+    <input type="text" name="name" value="{{ pod.name }}" required style="width:100%;"/>
+    <label>Source RSS feed URL</label>
+    <input type="url" name="source_rss" value="{{ pod.source_rss }}" required style="width:100%;"/>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;"><label>Author</label><input type="text" name="author" value="{{ pod.author or '' }}" style="width:100%;"/></div>
+      <div style="flex:1;min-width:200px;"><label>Category</label><input type="text" name="category" value="{{ pod.category or 'News' }}" style="width:100%;"/></div>
+    </div>
+    <label>Owner email</label>
+    <input type="text" name="owner_email" value="{{ pod.owner_email or '' }}" style="width:100%;"/>
+    <label>Description</label>
+    <textarea name="description" rows="3" style="width:100%;">{{ pod.description or '' }}</textarea>
+    <label>Artwork URL (used if no custom image uploaded)</label>
+    <input type="url" name="image_url" value="{{ pod.image_url or '' }}" style="width:100%;"/>
+    <p class="muted" style="margin-top:.8rem;">Fast-poll window (leave blank for hourly only):</p>
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+      <div><label>Weekdays (Mon=0…Sun=6)</label><input type="text" name="fast_weekdays" value="{{ pod.fast_weekdays or '' }}" style="width:140px;"/></div>
+      <div><label>From hour</label><input type="number" name="fast_hour_start" min="0" max="23" value="{{ pod.fast_hour_start if pod.fast_hour_start is not none else '' }}" style="width:90px;"/></div>
+      <div><label>To hour</label><input type="number" name="fast_hour_end" min="0" max="24" value="{{ pod.fast_hour_end if pod.fast_hour_end is not none else '' }}" style="width:90px;"/></div>
+    </div>
+    <label style="margin-top:.8rem;"><input type="checkbox" name="active" {{ 'checked' if pod.active else '' }}/> Active (poll this podcast)</label>
+    <button class="btn-primary" style="margin-top:1rem;">Save changes</button>
+  </form>
+</div>
+{% endblock %}
