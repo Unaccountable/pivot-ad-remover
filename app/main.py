@@ -14,6 +14,7 @@ from app.scheduler import run_scheduler, poll_once, fetch_feed
 from app.transcriber import run_transcriber
 from app.llm_detector import detect_ads
 from app.processor import process_episode
+from app.recovery import recover_interrupted
 from app.feed import generate_feed, _feed_path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -36,6 +37,7 @@ def startup():
     ARTWORK_DIR.mkdir(parents=True, exist_ok=True)
     threading.Thread(target=run_scheduler, daemon=True).start()
     threading.Thread(target=run_transcriber, daemon=True).start()
+    recover_interrupted()  # resume any cut/download interrupted by a restart
     log.info("Podcast Ad-Free started.")
 
 # --- public feed + audio (per-podcast token) ----------------------------
