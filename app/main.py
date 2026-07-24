@@ -130,8 +130,13 @@ def episode_transcript(episode_id: int):
     if not p.exists(): raise HTTPException(404)
     return {"words": json.loads(p.read_text()).get("words", [])}
 
+def _opt_int(v):
+    v = (v or "").strip()
+    return int(v) if v.isdigit() else None
+
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request, podcast_id: Optional[int] = None):
+def index(request: Request, podcast_id: str = ""):
+    podcast_id = _opt_int(podcast_id)
     with get_db() as db:
         pods = list_podcasts(db)
         sql = ("SELECT e.id,e.title,e.pub_date,e.status,e.error_msg,e.detector,p.name AS pod "
@@ -332,7 +337,8 @@ def delete_podcast(pid: int):
 
 # --- processing logs ----------------------------------------------------
 @app.get("/logs", response_class=HTMLResponse)
-def logs_page(request: Request, q: str = "", status: str = "", podcast_id: Optional[int] = None):
+def logs_page(request: Request, q: str = "", status: str = "", podcast_id: str = ""):
+    podcast_id = _opt_int(podcast_id)
     with get_db() as db:
         pods = list_podcasts(db)
         sql = "SELECT * FROM processing_log WHERE 1=1"; args = []
