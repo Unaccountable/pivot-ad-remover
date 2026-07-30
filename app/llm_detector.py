@@ -142,12 +142,14 @@ def _snap_to_silence(gaps, t, upper, window=SILENCE_SEARCH_WINDOW):
     """
     best, best_dist = None, window
     for a, b in gaps:
-        # Candidate edge for this direction; clamp inside the gap if t is within it.
-        point = min(b, t) if not upper else max(a, t)
-        if not upper and point > t:      # gap lies entirely after a start boundary
-            continue
-        if upper and point < t:          # gap lies entirely before an end boundary
-            continue
+        if not upper:
+            if a > t:        # gap lies entirely after a start boundary - wrong side
+                continue
+            point = min(b, t)
+        else:
+            if b < t:        # gap lies entirely before an end boundary - wrong side
+                continue
+            point = max(a, t)
         dist = abs(point - t)
         if dist < best_dist:
             best, best_dist = point, dist
