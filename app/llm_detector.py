@@ -19,9 +19,9 @@ from bisect import bisect_right, bisect_left
 from pathlib import Path
 from app.config import (
     LLM_PROVIDER, ANTHROPIC_API_KEY, LLM_MODEL, AD_BUFFER_SECONDS, AD_MIN_GAP_SECONDS,
-    FINGERPRINT_ENABLED,
+    AD_BRIDGE_SECONDS, FINGERPRINT_ENABLED,
 )
-from app.detector import detect_ad_segments  # regex fallback
+from app.detector import detect_ad_segments, _compiled_resume  # regex fallback + resume cues
 
 log = logging.getLogger(__name__)
 
@@ -202,6 +202,40 @@ def _postprocess(raw_segments, words, duration, audio_path=None):
             merged.append(seg)
     return merged
 
+def _bridge_ad_pods(segs, words):
+    """Close short gaps between detected ad segments.
+
+    Ads run back-to-back in a pod, so a brief stretch between two detected ads
+    is almost always more of the same break that the model split or under-shot -
+    e.g. one pass returned a cross-promo trailer as two pieces and left 45s of it
+    uncut in between. Model boundaries vary run to run even at temperature 0, so
+    this is enforced structurally rather than by prompting.
+
+    Guarded: a gap is never bridged if the hosts audibly resume inside it (a
+    RESUME_PATTERNS phrase such as "we're back"), which is what a real return to
+    content sounds like.
+    """
+    if len(segs) < 2:
+        return segs
+    out = [segs[0]]
+    for seg in segs[1:]:
+        gap_start, gap_end = out[-1]["end"], seg["start"]
+        gap = gap_end - gap_start
+        resumed = False
+        if 0 < gap <= AD_BRIDGE_SECONDS:
+            text = " ".join(w["word"] for w in words
+                            if gap_start <= w["start"] <= gap_end)
+            resumed = any(p.search(text) for p in _compiled_resume)
+        if 0 < gap <= AD_BRIDGE_SECONDS and not resumed:
+            log.info("Bridging %.1fs gap between ad segments at %.1fs", gap, gap_start)
+            out[-1]["end"] = seg["end"]
+            for r in seg["reasons"]:
+                if r not in out[-1]["reasons"]:
+                    out[-1]["reasons"].append(r)
+        else:
+            out.append(seg)
+    return out
+
 def _refine_with_silence(segs, audio_path, duration):
     """Widen already-built segments (the regex paths, which only ever apply a
     fixed buffer) out to nearby silence gaps, so a fallback cut lands as cleanly
@@ -300,7 +334,7 @@ def detect_ads(transcript_path, audio_path=None):
 
     try:
         raw = _call_anthropic(_build_prompt(words))
-        segs = _postprocess(raw, words, duration, audio_path)
+        segs = _bridge_ad_pods(_postprocess(raw, words, duration, audio_path), words)
         log.info("LLM (%s) detected %d ad segments", _short_model(), len(segs))
         return _merge_segments(fp_segs, segs), f"{fp_label}llm({_short_model()})"
     except Exception as e:

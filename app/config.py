@@ -57,6 +57,10 @@ WHISPER_CPU_THREADS = int(os.getenv("WHISPER_CPU_THREADS", "2"))
 
 AD_BUFFER_SECONDS = float(os.getenv("AD_BUFFER_SECONDS", "3.0"))
 AD_MIN_GAP_SECONDS = float(os.getenv("AD_MIN_GAP_SECONDS", "30.0"))
+# Gaps shorter than this between two detected ads are treated as more of the same
+# ad pod and closed, unless the hosts audibly resume inside the gap. Covers the
+# model splitting one ad read into two pieces on some runs.
+AD_BRIDGE_SECONDS = float(os.getenv("AD_BRIDGE_SECONDS", "75.0"))
 # How far past an ad block to look for a "we're back" style resume phrase
 AD_RESUME_WINDOW_SECONDS = float(os.getenv("AD_RESUME_WINDOW_SECONDS", "90.0"))
 
