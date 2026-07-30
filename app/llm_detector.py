@@ -257,6 +257,11 @@ def _call_anthropic(prompt_text):
     resp = client.messages.create(
         model=LLM_MODEL,
         max_tokens=4000,
+        # Boundary extraction is a structured task, not a creative one. At the
+        # default temperature the same episode yields different ad boundaries on
+        # each run - one pass split a cross-promo in two and left 45s of it
+        # uncut. Pin to 0 so detection is reproducible and re-runnable.
+        temperature=0,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": prompt_text}],
     )
