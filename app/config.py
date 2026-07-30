@@ -22,6 +22,22 @@ LLM_MODEL = os.getenv("LLM_MODEL", "claude-haiku-4-5")
 # Base URL for a future local/OpenAI-compatible endpoint (unused by anthropic).
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "").strip()
 
+# --- Audio fingerprint ad detection (pluggable, runs alongside LLM/regex) --
+# Matches episode audio against a library of previously-confirmed ad clips
+# using Chromaprint. Catches reused/programmatic ad reads by audio alone, no
+# transcript or API call needed once a clip is known. The library grows
+# automatically: every human-approved cut gets fingerprinted after publish.
+FINGERPRINT_ENABLED = os.getenv("FINGERPRINT_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+# Fraction of mismatched bits (0-1) below which a candidate counts as a match.
+# Real-audio testing: true matches land around 0.04-0.12 bit-error even
+# across an MP3 lossy round-trip; unrelated audio sits at 0.35+. 0.20 leaves
+# a wide margin on both sides.
+FINGERPRINT_MATCH_THRESHOLD = float(os.getenv("FINGERPRINT_MATCH_THRESHOLD", "0.20"))
+# Sample rate used to decode audio before fingerprinting. Chromaprint
+# resamples internally regardless, so a lower rate just means less audio for
+# ffmpeg to pipe through - doesn't affect match quality.
+FINGERPRINT_SAMPLE_RATE = int(os.getenv("FINGERPRINT_SAMPLE_RATE", "11025"))
+
 # Delete published episodes this many days after they are cut/published
 # (0 = keep forever). Distinct from MAX_EPISODE_AGE_DAYS, which is the
 # download window for new episodes.
@@ -47,6 +63,15 @@ AD_RESUME_WINDOW_SECONDS = float(os.getenv("AD_RESUME_WINDOW_SECONDS", "90.0"))
 # Set to 0 to disable age filter (download all episodes)
 _age = os.getenv("MAX_EPISODE_AGE_DAYS", "30")
 MAX_EPISODE_AGE_DAYS = int(_age) if _age else 0
+
+# Sent on every RSS/audio download so requests look like a normal Apple
+# Podcasts client rather than a script. Some feeds/CDNs behind dynamic ad
+# insertion vary what they serve (or block outright) based on user-agent, so
+# blending in avoids being singled out.
+DOWNLOAD_USER_AGENT = os.getenv(
+    "DOWNLOAD_USER_AGENT",
+    "Podcasts/4025.610.1 CFNetwork/1408.0.4 Darwin/22.5.0",
+)
 
 BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
 FEED_TITLE = "Pivot (Ad-Free)"

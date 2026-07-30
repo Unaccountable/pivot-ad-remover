@@ -1,10 +1,42 @@
 import json, logging, subprocess
 from pathlib import Path
 from app import proclog
-from app.config import AUDIO_DIR
+from app.config import AUDIO_DIR, FINGERPRINT_ENABLED
 from app.database import get_db, get_episode, get_podcast, set_status
 
 log = logging.getLogger(__name__)
+
+# A learned fingerprint is only useful if the same audio recurs verbatim. Ad
+# blocks that merged several distinct reads (multiple reasons) never recur as a
+# unit, because dynamic insertion reorders and swaps the individual ads - storing
+# them would fill the library with large, mislabeled, unmatchable entries. Same
+# for anything longer than a single plausible read.
+MAX_LEARN_SECONDS = 180.0
+
+def _learn_fingerprints(ep, raw_path, approved_segments):
+    """Fingerprint newly-approved ad segments that represent a single ad read,
+    adding them to the library so future episodes - any podcast - can be caught
+    by audio alone next time. Best-effort: a failure here never blocks or
+    unwinds an already-successful publish."""
+    from app.fingerprint import learn_from_segment
+    for seg in approved_segments:
+        reasons = seg.get("reasons") or []
+        if any(str(r).startswith("fingerprint match:") for r in reasons):
+            continue  # already came from a fingerprint match, nothing new to learn
+        span = seg["end"] - seg["start"]
+        if len(reasons) > 1 or span > MAX_LEARN_SECONDS:
+            log.debug("Skipping fingerprint learning for composite/long segment "
+                      "[%.1f,%.1f] (%d reads, %.0fs)", seg["start"], seg["end"],
+                      len(reasons), span)
+            continue
+        label = reasons[0] if reasons else "ad"
+        try:
+            with get_db() as db:
+                learn_from_segment(db, raw_path, seg["start"], seg["end"], label,
+                                    podcast_id=ep.get("podcast_id"), episode_id=ep["id"])
+        except Exception as e:
+            log.warning("Fingerprint learning failed for episode %s segment [%.1f,%.1f]: %s",
+                        ep["id"], seg.get("start", -1), seg.get("end", -1), e)
 
 def build_keep_segments(ad_segments, duration):
     ad_segs = sorted([(s["start"],s["end"]) for s in ad_segments if s.get("approved",True)])
@@ -64,6 +96,11 @@ def process_episode(episode_id):
         proclog.record(pod_name, ep["title"], "published", detector,
                        segments=len(approved), cut_secs=cut_secs, final_secs=final_secs)
         log.info("Episode %s published", episode_id)
+        if FINGERPRINT_ENABLED and approved:
+            try:
+                _learn_fingerprints(ep, raw_path, approved)
+            except Exception as e:
+                log.warning("Fingerprint learning pass failed for episode %s: %s", episode_id, e)
     except Exception as e:
         proclog.record(pod_name, ep["title"], "failed", detector, error=str(e))
         raise

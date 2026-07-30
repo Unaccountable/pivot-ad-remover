@@ -47,7 +47,7 @@ def run_transcriber():
             continue
 
         if AUTO_PUBLISH:
-            segs, detector = detect_ads(tp)
+            segs, detector = detect_ads(tp, ep["raw_audio_path"])
         else:
             segs, detector = None, None
         with get_db() as db:

@@ -42,6 +42,18 @@ CREATE TABLE IF NOT EXISTS processing_log (
     segments INTEGER, cut_secs REAL, final_secs REAL, error TEXT
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS ad_fingerprints (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT,
+    podcast_id INTEGER,
+    episode_id INTEGER,
+    fp_json TEXT NOT NULL,      -- JSON array of Chromaprint raw fingerprint ints
+    fp_len INTEGER NOT NULL,
+    duration_secs REAL,
+    hit_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    last_matched_at TEXT
+);
 """
 
 @contextmanager
@@ -137,3 +149,27 @@ def set_status(db, episode_id, status, error_msg=None):
         "UPDATE episodes SET status=?, error_msg=?, updated_at=datetime('now') WHERE id=?",
         (status, error_msg, episode_id),
     )
+
+# --- ad fingerprint library -----------------------------------------------
+def add_fingerprint(db, label, fp, duration_secs, podcast_id=None, episode_id=None):
+    """Store a Chromaprint raw fingerprint (list of ints) for a confirmed ad clip."""
+    cur = db.execute(
+        "INSERT INTO ad_fingerprints (label,podcast_id,episode_id,fp_json,fp_len,duration_secs) "
+        "VALUES (?,?,?,?,?,?)",
+        (label, podcast_id, episode_id, json.dumps(fp), len(fp), duration_secs),
+    )
+    return cur.lastrowid
+
+def list_fingerprints(db):
+    return [dict(r) for r in db.execute(
+        "SELECT * FROM ad_fingerprints ORDER BY hit_count DESC, id DESC"
+    ).fetchall()]
+
+def record_fingerprint_hit(db, fp_id):
+    db.execute(
+        "UPDATE ad_fingerprints SET hit_count=hit_count+1, last_matched_at=datetime('now') WHERE id=?",
+        (fp_id,),
+    )
+
+def delete_fingerprint(db, fp_id):
+    db.execute("DELETE FROM ad_fingerprints WHERE id=?", (fp_id,))

@@ -51,11 +51,15 @@ function render(){
   list.innerHTML=segments.map((seg,i)=>{
     const txt=excerpt(seg.start,seg.end);
     const dur=Math.max(0,seg.end-seg.start).toFixed(0);
+    const reasons=(seg.reasons||[]);
+    const isFp=reasons.some(r=>r.startsWith('fingerprint match:'));
+    const reasonTxt=reasons.join(' · ');
     return `
     <div style="background:#141414;border:1px solid #2a2a2a;border-radius:6px;padding:.8rem;margin-bottom:.8rem;">
       <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;">
         <input type="checkbox" ${seg.approved?'checked':''} onchange="toggle(${i},this.checked)" style="width:16px;height:16px;cursor:pointer;accent-color:#e74c3c;"/>
         <span style="font-size:.75rem;color:${seg.approved?'#e74c3c':'#666'};width:34px;font-weight:bold;">${seg.approved?'CUT':'KEEP'}</span>
+        ${isFp?'<span class="badge badge-published" style="font-size:.65rem;">fingerprint</span>':''}
         <label style="font-size:.85rem;color:#888;">Start</label>
         <input type="text" value="${fmt(seg.start)}" onchange="updateSeg(${i},'start',parseFmt(this.value))" style="background:#0f0f0f;border:1px solid #333;color:#e8e8e8;border-radius:4px;padding:4px 8px;width:100px;font-size:.85rem;"/>
         <label style="font-size:.85rem;color:#888;">End</label>
@@ -64,6 +68,7 @@ function render(){
         <button onclick="playSeg(${seg.start})" style="background:#1a2a3a;color:#7ab8e8;font-size:.75rem;padding:3px 10px;">▶ Play</button>
         <button onclick="removeSegment(${i})" style="background:#3a0a0a;color:#ff6b6b;font-size:.75rem;padding:3px 8px;margin-left:auto;">x</button>
       </div>
+      ${reasonTxt?`<div style="margin-top:.5rem;font-size:.75rem;color:#666;">${esc(reasonTxt)}</div>`:''}
       <div style="margin-top:.6rem;font-size:.82rem;line-height:1.5;color:#bbb;background:#0f0f0f;border-radius:4px;padding:.6rem .8rem;max-height:120px;overflow-y:auto;">
         ${txt?esc(txt):'<span style="color:#555;">(no transcript text in this range)</span>'}
       </div>

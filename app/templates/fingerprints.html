@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 style="margin-bottom:.4rem;">Ad fingerprint library</h2>
+<p class="muted" style="margin-bottom:1.2rem;">
+  Known ad clips, matched by audio against every new episode before transcription even needs to run.
+  Grows automatically: every ad segment you approve in review that wasn't already a fingerprint match
+  gets added here after publish, so repeat/programmatic ad reads - even on other shows - get caught instantly.
+</p>
+
+{% if not fingerprints %}
+<p class="muted">No fingerprints learned yet. Approve and publish a few episodes with detected ads, and matches will start showing up here.</p>
+{% endif %}
+
+<table>
+  <thead><tr><th>Label</th><th>Source</th><th>Duration</th><th>Hits</th><th>Learned</th><th>Last matched</th><th></th></tr></thead>
+  <tbody>{% for fp in fingerprints %}
+  <tr>
+    <td>{{ fp.label or '(unlabeled)' }}</td>
+    <td class="muted">{{ fp.podcast_name or '-' }}</td>
+    <td class="muted">{{ fp.duration_secs|round(0)|int if fp.duration_secs else '-' }}s</td>
+    <td><span class="badge {{ 'badge-published' if fp.hit_count else 'badge-pending' }}">{{ fp.hit_count }}</span></td>
+    <td class="muted" style="white-space:nowrap;">{{ fp.created_at[:16] if fp.created_at else '-' }}</td>
+    <td class="muted" style="white-space:nowrap;">{{ fp.last_matched_at[:16] if fp.last_matched_at else 'never' }}</td>
+    <td>
+      <form method="post" action="/fingerprints/{{ fp.id }}/delete" onsubmit="return confirm('Remove this fingerprint? Future episodes will need to re-detect this ad from scratch.');">
+        <button class="btn-danger" style="font-size:.72rem;padding:3px 8px;">delete</button>
+      </form>
+    </td>
+  </tr>{% endfor %}</tbody>
+</table>
+{% endblock %}

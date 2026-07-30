@@ -5,11 +5,13 @@ from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from zoneinfo import ZoneInfo
-from app.config import AUDIO_DIR, MAX_EPISODE_AGE_DAYS, SCHEDULE_TZ, RETENTION_DAYS
+from app.config import AUDIO_DIR, MAX_EPISODE_AGE_DAYS, SCHEDULE_TZ, RETENTION_DAYS, DOWNLOAD_USER_AGENT
 from app.database import get_db, set_status, list_podcasts
 
 log = logging.getLogger(__name__)
 FAST_POLL_SECONDS, NORMAL_POLL_SECONDS = 180, 3600
+# Look like a normal podcast client rather than a script (see DOWNLOAD_USER_AGENT).
+_HEADERS = {"User-Agent": DOWNLOAD_USER_AGENT}
 
 def _fast_weekdays(pod):
     try:
@@ -59,14 +61,14 @@ def stable_guid(entry):
     return raw
 
 def fetch_feed(url):
-    resp = httpx.get(url, timeout=30, follow_redirects=True)
+    resp = httpx.get(url, timeout=30, follow_redirects=True, headers=_HEADERS)
     resp.raise_for_status()
     return feedparser.parse(resp.text)
 
 def download_episode(url, dest):
     dest.parent.mkdir(parents=True, exist_ok=True)
     log.info("Downloading %s", url)
-    with httpx.stream("GET", url, timeout=600, follow_redirects=True) as r:
+    with httpx.stream("GET", url, timeout=600, follow_redirects=True, headers=_HEADERS) as r:
         r.raise_for_status()
         with open(dest, "wb") as f:
             for chunk in r.iter_bytes(chunk_size=65536):

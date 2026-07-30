@@ -9,6 +9,7 @@ from app.config import AUDIO_DIR, ARTWORK_DIR, BASE_URL
 from app.database import (
     init_db, get_db, get_episode, set_status, slugify,
     get_podcast, get_podcast_by_slug, get_episode_by_clean_name, list_podcasts,
+    list_fingerprints, delete_fingerprint,
 )
 from app.scheduler import run_scheduler, poll_once, fetch_feed
 from app.transcriber import run_transcriber
@@ -157,7 +158,7 @@ def review_page(request: Request, episode_id: int):
         ep = get_episode(db, episode_id)
     if not ep: raise HTTPException(404)
     if ep["status"] == "pending_review" and not ep["ad_segments"] and ep["transcript_path"]:
-        segs, detector = detect_ads(Path(ep["transcript_path"]))
+        segs, detector = detect_ads(Path(ep["transcript_path"]), ep["raw_audio_path"])
         with get_db() as db:
             db.execute("UPDATE episodes SET ad_segments=?, detector=? WHERE id=?",
                        (json.dumps(segs), detector, episode_id))
@@ -189,7 +190,7 @@ def redetect(episode_id: int):
     if not ep: raise HTTPException(404)
     if not ep["transcript_path"] or not Path(ep["transcript_path"]).exists():
         raise HTTPException(400, "No transcript for this episode - retranscribe first")
-    segs, detector = detect_ads(Path(ep["transcript_path"]))
+    segs, detector = detect_ads(Path(ep["transcript_path"]), ep["raw_audio_path"])
     with get_db() as db:
         db.execute("UPDATE episodes SET ad_segments=?, detector=?, updated_at=datetime('now') WHERE id=?",
                    (json.dumps(segs), detector, episode_id))
@@ -354,3 +355,19 @@ def logs_page(request: Request, q: str = "", status: str = "", podcast_id: str =
         rows = [dict(r) for r in db.execute(sql, args).fetchall()]
     return templates.TemplateResponse("logs.html", {"request": request, "logs": rows,
         "podcasts": pods, "q": q, "status": status, "selected": podcast_id})
+
+# --- ad fingerprint library ----------------------------------------------
+@app.get("/fingerprints", response_class=HTMLResponse)
+def fingerprints_page(request: Request):
+    with get_db() as db:
+        fps = list_fingerprints(db)
+        pod_names = {p["id"]: p["name"] for p in list_podcasts(db)}
+    for fp in fps:
+        fp["podcast_name"] = pod_names.get(fp.get("podcast_id"))
+    return templates.TemplateResponse("fingerprints.html", {"request": request, "fingerprints": fps})
+
+@app.post("/fingerprints/{fp_id}/delete")
+def delete_fingerprint_route(fp_id: int):
+    with get_db() as db:
+        delete_fingerprint(db, fp_id)
+    return RedirectResponse("/fingerprints", status_code=303)
